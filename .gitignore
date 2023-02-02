@@ -1,0 +1,5 @@
+*.tmp
+prod-svc-creds.json
+.terraform.lock.hcl
+terraform.tfstate
+terraform.tfstate.backup
