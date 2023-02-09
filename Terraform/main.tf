@@ -1,93 +1,82 @@
-##VRSION TERRAFORM
-terraform {
-    required_version = "1.3.7"
-}
-##Provider
 provider "google"{
     credentials = var.mngt_key
     project     = var.project
     region      = var.region
 }
-resource "google_compute_instance_template" "websrv" {
-    name = "web-server-template"
-    machine_type = "f1-micro"
-###IMAGE FOR DEPLOE
-    disk {
-       source_image = data.google_compute_image.Debian11.self_link
-    }
-    network_interface {
-        network = "default"
+
+resource "google_compute_instance_template" "web-server-template" {
+  name = "web-server-template"
+  machine_type = "e2-micro"
+  disk {
+    source_image = "debian-cloud/debian-10"
   }
-##USER SSH KEY
-    metadata = {
-        ssh-keys = "admin:${file("~/.ssh/id_rsa.pub")}"
-    }
-    connection {
-        type        = "ssh"
-        user        = "admin"
-        timeout     = "10s"
-        host        = "${google_compute_instance_template.websrv.network_interface.0.access_config.0.nat_ip}"
-        agent       = false
-        private_key = "${file("~/.ssh/id_rsa")}"
+  network_interface {
+    network    = google_compute_network.default.id
+    subnetwork = google_compute_subnetwork.default.id
+    access_config {
+      nat_ip = null
+      }
   }
 
-### SCRIPTS IN TO VM
-    provisioner "remote-exec" {
-        script = "C:\\GIT\\Petproject1\\scripts\\install_web.sh"
-    }
+  metadata = {
+     startup-script = <<-EOF
+      #! /bin/bash
+      set -euo pipefail
 
-    provisioner "remote-exec" {
-        script = "C:\\GIT\\Petproject1\\scripts\\make_site.sh"
+      export DEBIAN_FRONTEND=noninteractive
+      apt-get update
+      apt-get install apache2 -y
+      rm -rf /var/www/html/index.html
+      mkdir /home/admin
+      apt install -y git
+      git init /home/admin/
+      git clone https://github.com/AnnaConda007/testForAlex.git /home/admin/testForAlex
+      mv /home/admin/testForAlex/* /var/www/html/
 
-
-}
-}
-
-###BALANSER
-resource "google_compute_instance_group" "instance-group" {
-  name = "web-server-group"
-  instance_template = google_compute_instance_template.websrv.self_link
-  size = 2
-  zone = "us-central1-a"
-}
-resource "google_compute_global_address" "load-balancer-ip" {
-  name = "web-load-balancer-ip"
-}
-resource "google_compute_health_check" "health-check" {
-  name = "web-load-balancer-health-check"
-  tcp_health_check {
-    port = "80"
+    EOF
+  }
+  tags = ["webserver"]
+  lifecycle {
+    create_before_destroy = true
   }
 }
-resource "google_compute_target_pool" "target-pool" {
-  name = "web-load-balancer-target-pool"
-  instances = [
-    google_compute_instance_group.instance-group.self_link
-  ]
-  health_checks = [
-    google_compute_health_check.health-check.self_link
-  ]
+
+resource "google_compute_instance_group_manager" "web-instance-group-manager" {
+  name = "web-instance-group-manager"
+  zone = var.zone
+  base_instance_name = "web-instance"
+  
+  named_port {
+    name = "http"
+    port = 80
+  }
+  version {
+    instance_template = google_compute_instance_template.web-server-template.id
+}
+  target_size = 2
 }
 
-###FIREWALL
-resource "google_compute_forwarding_rule" "forwarding-rule" {
-  name = "web-load-balancer-forwarding-rule"
-  load_balancing_scheme = "EXTERNAL"
-  ip_address = google_compute_global_address.load-balancer-ip.address
-  port_range = "80"
-  target = google_compute_target_pool.target-pool.self_link
+
+# VPC
+resource "google_compute_network" "default" {
+  name                    = "def-net"
+    auto_create_subnetworks = false
+}
+# backend subnet
+resource "google_compute_subnetwork" "default" {
+  name          = "def-subnet"
+  ip_cidr_range = "10.0.1.0/24"
+  region        = var.region
+  network       = google_compute_network.default.id
 }
 
-resource "google_compute_firewall" "firewall" {
-    name    = "externalssh"
-    network = "default"
-    allow {
-        protocol = "tcp"
-        ports    = ["22"]
-    }
-    source_ranges = ["0.0.0.0/0"] 
-    target_tags   = ["externalssh"]
+# reserved IP address
+resource "google_compute_global_address" "default" {
+  name     = "def-static-ip"
 }
+#########################################
+
+##For test
 resource "google_compute_firewall" "webserverrule" {
     name    = "webserver"
     network = "default"
@@ -98,3 +87,7 @@ resource "google_compute_firewall" "webserverrule" {
     source_ranges = ["0.0.0.0/0"] 
     target_tags   = ["webserver"]
 }
+
+#resource "google_compute_address" "static" {
+#  name = "ipv4-address"
+#}

@@ -10,3 +10,13 @@ variable "project" {
     description = "Name of project in GCP"
     default = "pirate-project-374313"
   }
+variable "install_web" {
+  default="C:\\GIT\\Petproject1\\scripts\\install_web.sh"
+  }
+variable "install_site" {
+  default = "C:\\GIT\\Petproject1\\scripts\\make_site.sh"
+}
+variable "zone" {
+  default = "europe-west6-a"
+  
+}
